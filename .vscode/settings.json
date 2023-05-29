@@ -1,0 +1,8 @@
+{
+  "files.associations": {
+    "atomic": "cpp",
+    "cstdint": "cpp",
+    "iostream": "cpp",
+    "ostream": "cpp"
+  }
+}

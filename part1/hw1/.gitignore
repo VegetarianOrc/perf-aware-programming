@@ -1,0 +1,3 @@
+# don't check in assembled output
+sigle_register_mov
+many_register_mov
