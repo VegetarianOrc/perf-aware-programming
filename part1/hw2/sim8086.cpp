@@ -27,15 +27,28 @@ std::array<const char *, 16> regNames = {
     "di",
 };
 
+std::array<const char *, 8> effectiveAddresses = {
+    "[bx + si",
+    "[bx + di",
+    "[bp + si",
+    "[bp + di",
+    "[si",
+    "[di",
+    "[bp",
+    "[dx",
+};
+
 void handleMOV(u8 instructionHeader, std::ifstream &input, std::ofstream &out)
 {
   // write instruction name to out
   out << "mov ";
 
-  u8 argByte;
-
   // read second byte
-  input >> argByte;
+  u8 argByte;
+  input.read((char *)&argByte, 1);
+
+  u8 mod = argByte >> 6;
+  u8 d = instructionHeader & 2;
 
   // select register name set based on W bit
   const char **selectedNames = regNames.data();
@@ -45,18 +58,98 @@ void handleMOV(u8 instructionHeader, std::ifstream &input, std::ofstream &out)
     selectedNames += 8;
   }
 
-  // check D bit to determine register order
-  if (instructionHeader & 2)
+  switch (mod)
   {
-    out << selectedNames[((argByte >> 3) & 0b111)];
-    out << ", ";
-    out << selectedNames[(argByte & 0b111)];
+  case 0b00:
+  {
+    if (d)
+    {
+      out << selectedNames[((argByte >> 3) & 0b111)] << ", ";
+      out << effectiveAddresses[(argByte & 0b111)] << ']';
+    }
+    else
+    {
+      out << effectiveAddresses[(argByte & 0b111)] << "], ";
+      out << selectedNames[((argByte >> 3) & 0b111)];
+    }
   }
-  else
+  break;
+
+  case 0b01:
   {
-    out << selectedNames[(argByte & 0b111)];
-    out << ", ";
-    out << selectedNames[((argByte >> 3) & 0b111)];
+    // read 8 bit displacement
+    u8 displacement;
+    input.read((char *)&displacement, 1);
+
+    if (d)
+    {
+      out << selectedNames[((argByte >> 3) & 0b111)] << ", ";
+      out << effectiveAddresses[(argByte & 0b111)];
+      if (displacement)
+      {
+        out << " + " << std::to_string(displacement);
+      }
+      out << ']';
+    }
+    else
+    {
+      out << effectiveAddresses[(argByte & 0b111)];
+      if (displacement)
+      {
+        out << " + " << std::to_string(displacement);
+      }
+      out << "], ";
+      out << selectedNames[((argByte >> 3) & 0b111)];
+    }
+  }
+  break;
+
+  case 0b10:
+  {
+    u8 lowByte, highByte;
+    input.read((char *)&lowByte, 1);
+    input.read((char *)&highByte, 1);
+    u16 displacement = highByte << 8;
+    displacement |= lowByte;
+
+    if (d)
+    {
+      out << selectedNames[((argByte >> 3) & 0b111)] << ", ";
+      out << effectiveAddresses[(argByte & 0b111)];
+      if (displacement)
+      {
+        out << " + " << std::to_string(displacement);
+      }
+      out << ']';
+    }
+    else
+    {
+      out << effectiveAddresses[(argByte & 0b111)];
+      if (displacement)
+      {
+        out << " + " << std::to_string(displacement);
+      }
+      out << "], ";
+      out << selectedNames[((argByte >> 3) & 0b111)];
+    }
+  }
+  break;
+
+  case 0b11:
+  {
+    // check D bit to determine register order
+    if (d)
+    {
+      out << selectedNames[((argByte >> 3) & 0b111)] << ", ";
+      out << selectedNames[(argByte & 0b111)];
+    }
+    else
+    {
+      out << selectedNames[(argByte & 0b111)] << ", ";
+      out << selectedNames[((argByte >> 3) & 0b111)];
+    }
+  }
+  break;
   }
 
   out << "\n";
@@ -82,10 +175,8 @@ void immediateToReg(u8 instructionHeader, std::ifstream &input, std::ofstream &o
     out << regNames[reg + 8] << ", ";
     // read high byte
     u8 highByte;
-    input >> highByte;
-    u16 value = highByte;
-    // combine the thing
-    value <<= 8;
+    input.read((char *)&highByte, 1);
+    u16 value = highByte << 8;
     value |= lowByte;
     out << value << '\n';
   }
@@ -111,8 +202,9 @@ int main(int argc, char *argv[])
   outputStream << "bits 16\n\n";
 
   u8 instructionHeader;
+
   // read first header
-  instructionStream >> instructionHeader;
+  instructionStream.read((char *)&instructionHeader, 1);
 
   while (instructionStream)
   {
@@ -146,7 +238,7 @@ int main(int argc, char *argv[])
     }
 
     // read next header
-    instructionStream >> instructionHeader;
+    instructionStream.read((char *)&instructionHeader, 1);
   }
 
   return 0;
